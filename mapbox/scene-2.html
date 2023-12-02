@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Animate the camera around a point with 3D terrain</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+<style>
+body { margin: 0; padding: 0; }
+#map { position: absolute; top: 0; bottom: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<script>
+	mapboxgl.accessToken = 'pk.eyJ1IjoibWF0dGllZ2lzc2VsYmVjayIsImEiOiJjbG5hcmhvOWMwMHVhMmtsaW04M3dqb2N6In0.KDF-cF60UnFy3r1hGWlWfQ';
+    const map = new mapboxgl.Map({
+        container: 'map',
+        zoom: 11.53,
+        center: [6.887301377310216, 45.87892950264426],
+        pitch: 76,
+        bearing: -177.2,
+        // Choose from Mapbox's core styles, or make your own style with Mapbox Studio
+        style: 'mapbox://styles/mapbox/satellite-v9',
+        interactive: false
+    });
+
+    map.on('style.load', () => {
+        map.setFog({}); // Set the default atmosphere style
+
+        // Add terrain
+        map.addSource('mapbox-dem', {
+            'type': 'raster-dem',
+            'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+            'tileSize': 512,
+            'maxzoom': 10
+        });
+        map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+    });
+
+    function updateCameraPosition(position, altitude, target) {
+        const camera = map.getFreeCameraOptions();
+
+        camera.position = mapboxgl.MercatorCoordinate.fromLngLat(
+            position,
+            altitude
+        );
+        camera.lookAtPoint(target);
+
+        map.setFreeCameraOptions(camera);
+    }
+
+    let animationIndex = 0;
+    let animationTime = 0.0;
+
+    // wait for the terrain to load before starting animations
+    map.once('idle', () => {
+        // linearly interpolate between two altitudes/positions based on time
+        const lerp = (a, b, t) => {
+            if (Array.isArray(a) && Array.isArray(b)) {
+                const result = [];
+                for (let i = 0; i < Math.min(a.length, b.length); i++)
+                    result[i] = a[i] * (1.0 - t) + b[i] * t;
+                return result;
+            } else {
+                return a * (1.0 - t) + b * t;
+            }
+        };
+
+        const animations = [
+            {
+                duration: 20000.0,
+                animate: (phase) => {
+                    const start = [6.835116319084452, 45.914889368176716];
+                    const end = [6.835116319084452, 45.914889368176716];
+                    const alt = [15000.0, 9000.0];
+
+                    // interpolate camera position while keeping focus on a target lat/lng
+                    const position = lerp(start, end, phase);
+                    const altitude = lerp(alt[0], alt[1], phase);
+                    const target = [6.887301377310216, 45.87892950264426];
+
+                    updateCameraPosition(position, altitude, target);
+                }
+            }
+        ];
+
+        let lastTime = 0.0;
+        function frame(time) {
+            animationIndex %= animations.length;
+            const current = animations[animationIndex];
+
+            if (animationTime < current.duration) {
+                // Normalize the duration between 0 and 1 to interpolate the animation
+                const phase = animationTime / current.duration;
+                current.animate(phase);
+            }
+
+            // Elasped time since last frame, in milliseconds
+            const elapsed = time - lastTime;
+            animationTime += elapsed;
+            lastTime = time;
+
+            if (animationTime > current.duration) {
+                animationIndex++;
+                animationTime = 0.0;
+            }
+
+            window.requestAnimationFrame(frame);
+        }
+
+        window.requestAnimationFrame(frame);
+    });
+</script>
+
+</body>
+</html>
